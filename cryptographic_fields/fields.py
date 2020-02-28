@@ -2,15 +2,13 @@ from __future__ import unicode_literals
 
 import sys
 
-import django.db
-import django.db.models
-from django.utils.six import PY2, string_types
+from django.db import models, connection
 from django.utils.functional import cached_property
 from django.core import validators
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
-import cryptography.fernet
+from cryptography import fernet
 
 
 def get_crypter():
@@ -22,18 +20,19 @@ def get_crypter():
     try:
         # Allow the use of key rotation
         if isinstance(configured_keys, (tuple, list)):
-            keys = [cryptography.fernet.Fernet(str(k)) for k in configured_keys]
+            keys = [fernet.Fernet(str(k)) for k in configured_keys]
         else:
             # else turn the single key into a list of one
-            keys = [cryptography.fernet.Fernet(str(configured_keys)), ]
+            keys = [fernet.Fernet(str(configured_keys)), ]
     except Exception as e:
         raise ImproperlyConfigured(
-            'FIELD_ENCRYPTION_KEY defined incorrectly: {}'.format(str(e))), None, sys.exc_info()[2]
+            'FIELD_ENCRYPTION_KEY defined incorrectly: {}'.format(str(e)))(
+            None).with_traceback(sys.exc_info()[2])
 
     if len(keys) == 0:
         raise ImproperlyConfigured('No keys defined in setting FIELD_ENCRYPTION_KEY')
 
-    return cryptography.fernet.MultiFernet(keys)
+    return fernet.MultiFernet(keys)
 
 
 CRYPTER = get_crypter()
@@ -60,12 +59,12 @@ class EncryptedMixin(object):
         if value is None:
             return value
 
-        if isinstance(value, (bytes, string_types[0])):
+        if isinstance(value, (bytes, str)):
             if isinstance(value, bytes):
                 value = value.decode('utf-8')
             try:
                 value = decrypt_str(value)
-            except cryptography.fernet.InvalidToken:
+            except fernet.InvalidToken:
                 pass
 
         return super(EncryptedMixin, self).to_python(value)
@@ -79,10 +78,8 @@ class EncryptedMixin(object):
 
         if value is None:
             return value
-        if PY2:
-            return encrypt_str(unicode(value))
         # decode the encrypted value to a unicode string, else this breaks in pgsql
-        return (encrypt_str(str(value))).decode('utf-8')
+        return (encrypt_str(str(value)))
 
     def get_internal_type(self):
         return "TextField"
@@ -96,28 +93,28 @@ class EncryptedMixin(object):
         return name, path, args, kwargs
 
 
-class EncryptedCharField(EncryptedMixin, django.db.models.CharField):
+class EncryptedCharField(EncryptedMixin, models.CharField):
 
     pass
 
 
-class EncryptedTextField(EncryptedMixin, django.db.models.TextField):
+class EncryptedTextField(EncryptedMixin, models.TextField):
     pass
 
 
-class EncryptedDateField(EncryptedMixin, django.db.models.DateField):
+class EncryptedDateField(EncryptedMixin, models.DateField):
     pass
 
 
-class EncryptedDateTimeField(EncryptedMixin, django.db.models.DateTimeField):
+class EncryptedDateTimeField(EncryptedMixin, models.DateTimeField):
     pass
 
 
-class EncryptedEmailField(EncryptedMixin, django.db.models.EmailField):
+class EncryptedEmailField(EncryptedMixin, models.EmailField):
     pass
 
 
-class EncryptedBooleanField(EncryptedMixin, django.db.models.BooleanField):
+class EncryptedBooleanField(EncryptedMixin, models.BooleanField):
 
     def get_db_prep_save(self, value, connection):
         if value is None:
@@ -126,13 +123,11 @@ class EncryptedBooleanField(EncryptedMixin, django.db.models.BooleanField):
             value = '1'
         elif value is False:
             value = '0'
-        if PY2:
-            return encrypt_str(unicode(value))
         # decode the encrypted value to a unicode string, else this breaks in pgsql
-        return encrypt_str(str(value)).decode('utf-8')
+        return encrypt_str(str(value))
 
 
-class EncryptedNullBooleanField(EncryptedMixin, django.db.models.NullBooleanField):
+class EncryptedNullBooleanField(EncryptedMixin, models.NullBooleanField):
 
     def get_db_prep_save(self, value, connection):
         if value is None:
@@ -141,10 +136,8 @@ class EncryptedNullBooleanField(EncryptedMixin, django.db.models.NullBooleanFiel
             value = '1'
         elif value is False:
             value = '0'
-        if PY2:
-            return encrypt_str(unicode(value))
         # decode the encrypted value to a unicode string, else this breaks in pgsql
-        return encrypt_str(str(value)).decode('utf-8')
+        return encrypt_str(str(value))
 
 
 class EncryptedNumberMixin(EncryptedMixin):
@@ -156,7 +149,7 @@ class EncryptedNumberMixin(EncryptedMixin):
         # they're based on values retrieved from `connection`.
         range_validators = []
         internal_type = self.__class__.__name__[9:]
-        min_value, max_value = django.db.connection.ops.integer_field_range(
+        min_value, max_value = connection.ops.integer_field_range(
             internal_type)
         if min_value is not None:
             range_validators.append(validators.MinValueValidator(min_value))
@@ -165,24 +158,24 @@ class EncryptedNumberMixin(EncryptedMixin):
         return super(EncryptedNumberMixin, self).validators + range_validators
 
 
-class EncryptedIntegerField(EncryptedNumberMixin, django.db.models.IntegerField):
+class EncryptedIntegerField(EncryptedNumberMixin, models.IntegerField):
     description = "An IntegerField that is encrypted before " \
                   "inserting into a database using the python cryptography " \
                   "library"
     pass
 
 
-class EncryptedPositiveIntegerField(EncryptedNumberMixin, django.db.models.PositiveIntegerField):
+class EncryptedPositiveIntegerField(EncryptedNumberMixin, models.PositiveIntegerField):
     pass
 
 
-class EncryptedSmallIntegerField(EncryptedNumberMixin, django.db.models.SmallIntegerField):
+class EncryptedSmallIntegerField(EncryptedNumberMixin, models.SmallIntegerField):
     pass
 
 
-class EncryptedPositiveSmallIntegerField(EncryptedNumberMixin, django.db.models.PositiveSmallIntegerField):
+class EncryptedPositiveSmallIntegerField(EncryptedNumberMixin, models.PositiveSmallIntegerField):
     pass
 
 
-class EncryptedBigIntegerField(EncryptedNumberMixin, django.db.models.BigIntegerField):
+class EncryptedBigIntegerField(EncryptedNumberMixin, models.BigIntegerField):
     pass
