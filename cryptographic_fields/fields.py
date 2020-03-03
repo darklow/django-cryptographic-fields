@@ -79,7 +79,7 @@ class EncryptedMixin(object):
         if value is None:
             return value
         # decode the encrypted value to a unicode string, else this breaks in pgsql
-        return (encrypt_str(str(value)))
+        return (encrypt_str(str(value))).decode('utf-8')
 
     def get_internal_type(self):
         return "TextField"
