@@ -124,7 +124,7 @@ class EncryptedBooleanField(EncryptedMixin, models.BooleanField):
         elif value is False:
             value = '0'
         # decode the encrypted value to a unicode string, else this breaks in pgsql
-        return encrypt_str(str(value))
+        return encrypt_str(str(value)).decode('utf-8')
 
 
 class EncryptedNullBooleanField(EncryptedMixin, models.NullBooleanField):
@@ -137,7 +137,7 @@ class EncryptedNullBooleanField(EncryptedMixin, models.NullBooleanField):
         elif value is False:
             value = '0'
         # decode the encrypted value to a unicode string, else this breaks in pgsql
-        return encrypt_str(str(value))
+        return encrypt_str(str(value)).decode('utf-8')
 
 
 class EncryptedNumberMixin(EncryptedMixin):
